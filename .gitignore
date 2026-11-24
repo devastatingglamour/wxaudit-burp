@@ -1,0 +1,20 @@
+# 编译产物 / Build output
+out/
+stub-out/
+test-out/
+
+# 本地生成的 jar（发布包通过 GitHub Release 提供）
+# Locally generated jars (release artifact is published via GitHub Releases)
+*.jar
+
+# 验收日志 / Verification logs
+verification-round*.log
+
+# 临时对比文件 / Temporary comparison files
+j1.jar
+j2.jar
+build-manifest.txt
+
+# Python 缓存 / Python cache
+__pycache__/
+*.pyc
