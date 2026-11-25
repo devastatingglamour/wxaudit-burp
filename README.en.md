@@ -1,5 +1,7 @@
 # wxaudit · Burp Passive Recon Extension
 
+[![CI](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml/badge.svg)](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml)
+
 [中文](README.md) · [File Index](FILES.md) · [Verification](VERIFICATION.md) · [Changelog](CHANGELOG.md)
 
 A passive scanner hooked into Burp Proxy: **only scans the target hosts you configure**, automatically extracts secrets and endpoints from captured responses, and unpacks both plaintext and encrypted WeChat mini-program (`wxapkg`) packages. Results appear in a custom tab and can be exported to JSON / HTML.
