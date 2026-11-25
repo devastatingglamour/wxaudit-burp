@@ -19,15 +19,12 @@
 | `test/wxaudit/` | 自动化测试（含 AI mock 测试）/ Automated tests (incl. AI mock tests) |
 | `.github/workflows/ci.yml` | GitHub Actions 持续集成 / GitHub Actions continuous integration |
 | `.gitignore` | Git 忽略规则 / Git ignore rules |
-| `CHANGELOG.md` | 版本变更记录 / Changelog |
 | `CONTRIBUTING.md` | 贡献与发布流程 / Contribution and release process |
 | `FILES.md` | 全部文件的中英双语简介 / Bilingual descriptions for all files |
 | `LICENSE` | MIT 许可证 / MIT License |
 | `SECURITY.md` | 安全策略 / Security policy |
 | `README.en.md` | 英文使用说明 / English usage guide |
 | `README.md` | 本文件 / This file |
-| `RELEASE_NOTES.md` | 发布说明 / Release notes |
-| `VERIFICATION.md` | 三轮验收报告 / Three-round verification report |
 | `build.sh` | 编译、测试与打包脚本 / Build, test, and packaging script |
 | `pack.py` | 可复现打包脚本 / Reproducible packaging script |
 | `release.py` | 一键发布脚本 / One-shot release script |

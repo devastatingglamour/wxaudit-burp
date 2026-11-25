@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml/badge.svg)](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml)
 
-[中文](README.md) · [File Index](FILES.md) · [Verification](VERIFICATION.md) · [Changelog](CHANGELOG.md)
+[中文](README.md) · [File Index](FILES.md)
 
 A passive scanner hooked into Burp Proxy: **only scans the target hosts you configure**, automatically extracts secrets and endpoints from captured responses, unpacks both plaintext and encrypted WeChat mini-program (`wxapkg`) packages, and **optionally uses an LLM to triage false positives and derive full exploit chains for packets you select (off by default)**. Results appear in a custom tab and can be exported to JSON / HTML.
 
