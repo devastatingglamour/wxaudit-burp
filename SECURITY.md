@@ -8,9 +8,10 @@ This project is for security testing of systems you own or are authorized to tes
 ## 数据处理 / Data Handling
 
 - 不要提交真实 AppID、令牌、Cookie、抓包数据或真实用户数据。 / Never commit real AppIDs, tokens, cookies, captured traffic or real user data.
-- 自动化测试使用合成的 wxapkg 与虚构数据。 / Automated tests use synthetic wxapkg files and fictitious data.
+- 自动化测试使用合成的 wxapkg 与虚构数据（AI mock 端点在本地回环，无真实 Key）。 / Automated tests use synthetic wxapkg files and fictitious data (the AI mock endpoint is local loopback with no real key).
 - 扫描结果可能包含敏感信息，分享前需人工审查和脱敏。 / Scan results may contain secrets; review and redact before sharing.
-- 扩展仅做静态分析，不主动发送任何请求。 / The extension performs static analysis only and sends no requests on its own.
+- **默认不发任何请求**：只有用户显式勾选「启用 AI 分析」并填入 base_url / Key / 模型后，扩展才会向用户自配的 OpenAI 兼容端点发送所选数据包的最小字段（请求方法、脱敏请求头、脱敏响应摘要、命中值/上下文、来源 URL）。Bearer Token、password/secret、JWT 在发送前掩码；不发送完整响应、Cookie。抓包数据与 AI 结论仅存内存，不落盘；API Key 仅存 Burp 扩展设置，不写日志、不入库。 / **No requests by default**: only after the user explicitly enables AI and configures a base_url / key / model does the extension send a minimal set of fields (method, redacted request head, redacted response excerpt, matched values/context, source URL) to the user-configured OpenAI-compatible endpoint. Bearer tokens, password/secret values and JWTs are redacted before sending; full responses and cookies are never sent. Captured data and AI results are memory-only, never persisted; the API key lives only in Burp extension settings, never in logs or the repository.
+- 完整利用链功能仅用于自有或已授权目标，AI 输出仅供参考，需人工复核并遵守适用法律。 / The exploit-chain feature is for owned or authorized targets only; AI output is advisory, requires human review, and must comply with applicable law.
 
 ## 解密与 AppID / Decryption and AppID
 
