@@ -125,11 +125,28 @@ public final class Scanner {
         return out;
     }
 
+    /**
+     * 兼容旧签名：只返回路由字符串（SelfTest/Legacy 依赖）。
+     * Legacy signature: return bare route strings.
+     */
     public static List<String> extractRoutes(List<Wxapkg.VirtualFile> files) {
         List<String> routes = new ArrayList<String>();
+        for (RouteFinding r : extractRouteFindings(files, "")) routes.add(r.route);
+        return routes;
+    }
+
+    /**
+     * 升级版：返回带 file/line/snippet/sourceUrl 上下文的可疑路由，供 UI 与 AI 分析使用。
+     * Upgraded: suspicious routes with file/line/snippet/sourceUrl context for UI and AI.
+     */
+    public static List<RouteFinding> extractRouteFindings(List<Wxapkg.VirtualFile> files, String sourceUrl) {
+        List<RouteFinding> routes = new ArrayList<RouteFinding>();
+        if (files == null) return routes;
+        String[] lines = null;
         for (Wxapkg.VirtualFile vf : files) {
-            if (!vf.name.endsWith("app-config.json")) continue;
+            if (vf == null || vf.data == null || !vf.name.endsWith("app-config.json")) continue;
             String text = new String(vf.data, StandardCharsets.UTF_8);
+            lines = text.split("\\r?\\n", -1);
             // lightweight scan of "page":{"<route>":{...}}
             int p = text.indexOf("\"page\"");
             if (p < 0) continue;
@@ -137,7 +154,14 @@ public final class Scanner {
                     .matcher(text.substring(p));
             while (m.find()) {
                 String route = m.group(1);
-                if (SUSPICIOUS_ROUTE.matcher(route).find()) routes.add(route);
+                if (!SUSPICIOUS_ROUTE.matcher(route).find()) continue;
+                int line = lineNumber(text, p + m.start());
+                String snippet = "";
+                if (lines != null && line > 0 && line <= lines.length) {
+                    snippet = lines[line - 1].trim();
+                    if (snippet.length() > 240) snippet = snippet.substring(0, 240);
+                }
+                routes.add(new RouteFinding(route, vf.name, line, snippet, sourceUrl));
             }
         }
         return routes;
