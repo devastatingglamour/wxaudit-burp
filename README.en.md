@@ -1,6 +1,6 @@
 # wxaudit · Burp Passive Recon Extension v1.1.0
 
-[![CI](https://img.shields.io/github/actions/workflow/status/devastatingglamour/wxaudit-burp/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white&style=flat-square)](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml)
+[![CI](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml/badge.svg)](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml) [![Version](https://img.shields.io/github/v/release/devastatingglamour/wxaudit-burp?label=Version)](https://github.com/devastatingglamour/wxaudit-burp/releases/latest)
 
 [中文](README.md) · [File Index](FILES.md)
 

@@ -1,6 +1,6 @@
 # wxaudit Burp Extension v1.1.0
 
-[![CI](https://img.shields.io/github/actions/workflow/status/devastatingglamour/wxaudit-burp/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white&style=flat-square)](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml)
+[![CI](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml/badge.svg)](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml) [![Version](https://img.shields.io/github/v/release/devastatingglamour/wxaudit-burp?label=Version)](https://github.com/devastatingglamour/wxaudit-burp/releases/latest)
 
 挂在 Burp Proxy 上的被动侦察扩展：**只扫你指定的目标网址**，自动提取 JS 与小程序包里的敏感信息和接口，明文与加密 wxapkg 自动解包脱壳；**可选接入大模型对所选数据包做误报研判与完整利用链分析（默认关闭）**。 / A passive recon extension for Burp Proxy that **only scans the target URLs you configure**, extracts secrets and endpoints from JS and mini-program packages, auto-unpacks plaintext and encrypted wxapkg files, and **optionally uses an LLM to triage false positives and derive full exploit chains for selected packets (off by default)**.
 
