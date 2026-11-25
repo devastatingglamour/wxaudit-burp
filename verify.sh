@@ -13,6 +13,7 @@ bash build.sh 2>&1 | tee verification-round1.log
 grep -q "ALL CORE SELF-TESTS PASSED" verification-round1.log
 grep -q "INTEGRATION TEST PASSED" verification-round1.log
 grep -q "EDGE CASE TEST PASSED" verification-round1.log
+grep -q "AI MOCK TEST PASSED" verification-round1.log
 grep -q "BURP API COMPATIBILITY OK" verification-round1.log
 grep -q "BUILD OK" verification-round1.log
 echo ">>> ROUND 1 PASS"
