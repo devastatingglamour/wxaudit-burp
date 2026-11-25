@@ -27,6 +27,9 @@ java -Djava.awt.headless=true -cp "out;stub-out;test-out" wxaudit.IntegrationTes
 echo "=== 4c. boundary / malformed input ==="
 java -Djava.awt.headless=true -cp "out;stub-out;test-out" wxaudit.EdgeCaseTest
 
+echo "=== 4d. AI enhancement (mock OpenAI endpoint, JDK8) ==="
+java -Djava.awt.headless=true -cp "out;stub-out;test-out" wxaudit.AiTest
+
 echo "=== 5. Burp API compatibility (Burp JRE21 + real jar) ==="
 "$BURP_ROOT/jre/bin/java" -cp "$API_JAR;out;test-out" wxaudit.CompatCheck
 
