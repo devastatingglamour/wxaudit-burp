@@ -14,7 +14,17 @@ public final class Exporter {
 
     private Exporter() { }
 
+    /** Legacy 4-arg signature kept for backward compatibility with existing tests. */
     public static void writeJson(File file, List<Scanner.Finding> findings, String target, int[] stats)
+            throws Exception {
+        writeJson(file, findings, target, stats,
+                java.util.Collections.<RouteFinding>emptyList(),
+                java.util.Collections.<AiResult>emptyList());
+    }
+
+    /** Full signature with routes and AI results. */
+    public static void writeJson(File file, List<Scanner.Finding> findings, String target, int[] stats,
+                                 List<RouteFinding> routes, List<AiResult> aiResults)
             throws Exception {
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
@@ -42,11 +52,77 @@ public final class Exporter {
                     .append(",\"source_url\":").append(q(f.sourceUrl))
                     .append("}").append(i + 1 < findings.size() ? "," : "").append("\n");
         }
+        sb.append("  ],\n");
+        // routes
+        sb.append("  \"routes\": [\n");
+        if (routes != null) {
+            for (int i = 0; i < routes.size(); i++) {
+                RouteFinding r = routes.get(i);
+                sb.append("    {\"route\":").append(q(r.route))
+                        .append(",\"file\":").append(q(r.file))
+                        .append(",\"line\":").append(r.line)
+                        .append(",\"snippet\":").append(q(r.snippet))
+                        .append(",\"source_url\":").append(q(r.sourceUrl))
+                        .append("}").append(i + 1 < routes.size() ? "," : "").append("\n");
+            }
+        }
+        sb.append("  ],\n");
+        // AI results
+        sb.append("  \"ai_results\": [\n");
+        if (aiResults != null) {
+            for (int i = 0; i < aiResults.size(); i++) {
+                AiResult a = aiResults.get(i);
+                sb.append("    {\"packet_id\":").append(q(a.packetId))
+                        .append(",\"source_url\":").append(q(a.sourceUrl))
+                        .append(",\"model\":").append(q(a.model))
+                        .append(",\"ok\":").append(a.ok())
+                        .append(",\"error\":").append(q(a.error));
+                if (a.triage != null) {
+                    sb.append(",\"triage\":{\"verdict\":").append(q(a.triage.overallVerdict))
+                            .append(",\"confidence\":").append(a.triage.confidence)
+                            .append(",\"reason\":").append(q(a.triage.reason)).append("}");
+                } else {
+                    sb.append(",\"triage\":null");
+                }
+                if (a.chain != null) {
+                    sb.append(",\"chain\":{\"vuln_type\":").append(q(a.chain.vulnType))
+                            .append(",\"preconditions\":").append(qArray(a.chain.preconditions))
+                            .append(",\"steps\":").append(qArray(a.chain.steps))
+                            .append(",\"expected_result\":").append(q(a.chain.expectedResult))
+                            .append(",\"risk_level\":").append(q(a.chain.riskLevel))
+                            .append(",\"summary\":").append(q(a.chain.summary)).append("}");
+                } else {
+                    sb.append(",\"chain\":null");
+                }
+                sb.append("}").append(i + 1 < aiResults.size() ? "," : "").append("\n");
+            }
+        }
         sb.append("  ]\n}\n");
         write(file, sb.toString());
     }
 
+    private static String qArray(List<String> arr) {
+        StringBuilder b = new StringBuilder("[");
+        if (arr != null) {
+            for (int i = 0; i < arr.size(); i++) {
+                if (i > 0) b.append(',');
+                b.append(q(arr.get(i)));
+            }
+        }
+        return b.append(']').toString();
+    }
+
+    /** Legacy 4-arg signature kept for backward compatibility with existing tests. */
     public static void writeHtml(File file, List<Scanner.Finding> findings, String target, int[] stats)
+            throws Exception {
+        writeHtml(file, findings, target, stats,
+                java.util.Collections.<RouteFinding>emptyList(),
+                java.util.Collections.<AiResult>emptyList());
+    }
+
+    /** Full signature with routes and AI results. */
+    public static void writeHtml(File file, List<Scanner.Finding> findings, String target, int[] stats,
+                                 List<RouteFinding> routes, List<AiResult> aiResults)
             throws Exception {
         StringBuilder rows = new StringBuilder();
         for (Scanner.Finding f : findings) {
@@ -58,6 +134,37 @@ public final class Exporter {
                     .append("</td><td class='src'>").append(esc(f.sourceUrl))
                     .append("</td><td class='snip'>").append(esc(f.snippet)).append("</td></tr>\n");
         }
+        // AI result rows
+        StringBuilder aiRows = new StringBuilder();
+        if (aiResults != null) {
+            for (AiResult a : aiResults) {
+                String verdict = a.triage == null ? "-" : esc(a.triage.overallVerdict);
+                String reason = a.triage == null ? "" : esc(a.triage.reason);
+                String vuln = a.chain == null ? "-" : esc(a.chain.vulnType);
+                String risk = a.chain == null ? "-" : esc(a.chain.riskLevel);
+                StringBuilder steps = new StringBuilder();
+                if (a.chain != null) {
+                    for (int i = 0; i < a.chain.steps.size(); i++)
+                        steps.append(esc(a.chain.steps.get(i))).append("<br>");
+                }
+                aiRows.append("<tr><td class='src'>").append(esc(a.sourceUrl)).append("</td><td>")
+                        .append(a.ok() ? "成功" : "失败").append("</td><td>").append(verdict)
+                        .append("</td><td>").append(reason).append("</td><td>").append(vuln)
+                        .append("</td><td>").append(risk).append("</td><td class='snip'>")
+                        .append(steps).append("</td></tr>\n");
+            }
+        }
+        // route rows
+        StringBuilder routeRows = new StringBuilder();
+        if (routes != null) {
+            for (RouteFinding r : routes) {
+                routeRows.append("<tr><td>").append(esc(r.route)).append("</td><td class='loc'>")
+                        .append(esc(r.file)).append(":").append(r.line).append("</td><td class='src'>")
+                        .append(esc(r.sourceUrl)).append("</td><td class='snip'>")
+                        .append(esc(r.snippet)).append("</td></tr>\n");
+            }
+        }
+
         String doc = "<!doctype html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
                 + "<title>wxaudit 报告</title><style>\n"
                 + ":root{--bg:#f8f9fa;--card:#fff;--line:#dadce0;--text:#202124;--muted:#5f6368}\n"
@@ -84,9 +191,18 @@ public final class Exporter {
                 + card(stats[3], "高危", "#d93025") + card(stats[4], "中危", "#e37400")
                 + card(stats[5], "低危", "#1a73e8") + card(stats[6], "提示", "#5f6368")
                 + "</div>\n"
-                + "<div class=\"note\">仅列出静态匹配结果，需人工复核；密钥类发现请确认有效性后按正规流程上报。</div>\n"
+                + "<div class=\"note\">静态匹配 + AI 复核结果，均需人工复核；密钥类发现请确认有效性后按正规流程上报。AI 输出仅供参考，仅用于自有或已授权目标。</div>\n"
+                + "<h2>静态扫描结果</h2>\n"
                 + "<table><thead><tr><th>等级</th><th>规则</th><th>命中值</th><th>位置</th><th>来源 URL</th><th>上下文</th></tr></thead><tbody>\n"
                 + (rows.length() == 0 ? "<tr><td colspan='6'>无发现</td></tr>" : rows.toString())
+                + "</tbody></table>\n"
+                + "<h2>AI 研判 / 利用链（仅授权目标）</h2>\n"
+                + "<table><thead><tr><th>来源 URL</th><th>状态</th><th>研判</th><th>理由</th><th>漏洞类型</th><th>风险</th><th>测试步骤</th></tr></thead><tbody>\n"
+                + (aiRows.length() == 0 ? "<tr><td colspan='7'>未运行 AI 分析</td></tr>" : aiRows.toString())
+                + "</tbody></table>\n"
+                + "<h2>可疑路由（app-config.json，含上下文）</h2>\n"
+                + "<table><thead><tr><th>路由</th><th>位置</th><th>来源 URL</th><th>上下文</th></tr></thead><tbody>\n"
+                + (routeRows.length() == 0 ? "<tr><td colspan='4'>无可疑路由</td></tr>" : routeRows.toString())
                 + "</tbody></table></div></body></html>\n";
         write(file, doc);
     }
