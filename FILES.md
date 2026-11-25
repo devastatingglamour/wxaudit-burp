@@ -39,9 +39,13 @@
 | `build.sh` | 编译、四类测试、API 兼容校验、打包。<br>Compile, run four test groups, check API compatibility, package the jar. |
 | `verify.sh` | 三轮验收：全量构建、可复现性与产物完整性、真实 JRE 从 jar 加载。<br>Three acceptance rounds: full build, reproducibility/integrity, real-JRE load from jar. |
 | `pack.py` | 以固定时间戳写 JAR(ZIP)，保证构建字节级可复现。<br>Writes the JAR (ZIP) with fixed timestamps for byte-for-byte reproducible builds. |
+| `.github/workflows/ci.yml` | GitHub Actions 持续集成：编译、三组 mock 测试、可复现打包校验。<br>GitHub Actions CI: compile, three mocked test groups, reproducible packaging check. |
 | `README.md` / `README.en.md` | 中文 / 英文使用说明。<br>Chinese / English usage guide. |
 | `VERIFICATION.md` | 三轮验收报告与 SHA256。<br>Three-round verification report with SHA256. |
 | `CHANGELOG.md` | 中英文更新日志。<br>Bilingual changelog. |
-| `LICENSE` | MIT 许可证。<br>MIT license. |
+| `CONTRIBUTING.md` | 贡献与发布流程、版本规则、安全注意。<br>Contribution and release process, versioning, safety notes. |
+| `SECURITY.md` | 安全策略：授权使用、数据处理、漏洞报告方式。<br>Security policy: authorized use, data handling, vulnerability reporting. |
+| `LICENSE` | MIT 许可证（标准英文法律文本）。<br>MIT license (standard English legal text). |
+| `RELEASE_NOTES.md` | 中英文发布说明与操作步骤。<br>Bilingual release notes and publishing steps. |
 | `release.py` | 一键发布：用 PAT 推送 main、创建 tag 与 Release、上传 jar（Python 标准库，token 不落盘）。<br>One-shot publisher: push main, create tag/Release, upload the jar with a PAT (stdlib only, token never written to disk). |
 | `.gitignore` | 排除编译产物与本地日志。<br>Excludes build output and local logs. |
