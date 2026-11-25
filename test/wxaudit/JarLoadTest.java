@@ -53,6 +53,29 @@ public class JarLoadTest {
         String origin = String.valueOf(clazz.getProtectionDomain().getCodeSource().getLocation());
         check(origin.contains("wxaudit-burp.jar"), "BurpExtender loaded from jar: " + origin);
 
+        // AI enhancement classes must load from the delivered jar on Burp JRE21.
+        String[] aiClasses = { "wxaudit.Json", "wxaudit.AiConfig", "wxaudit.LlmClient",
+                "wxaudit.AiAnalyzer", "wxaudit.CapturedPacket", "wxaudit.RouteFinding",
+                "wxaudit.AiResultStore", "wxaudit.AiPrompts" };
+        for (String cn : aiClasses) {
+            try {
+                Class<?> c = Class.forName(cn);
+                check(c.getProtectionDomain().getCodeSource().getLocation().toString().contains("wxaudit-burp.jar"),
+                        "AI class loaded from jar: " + cn);
+            } catch (Throwable t) {
+                check(false, "AI class load failed: " + cn + " -> " + t);
+            }
+        }
+        // Default AI config must be disabled (zero external requests).
+        try {
+            Class<?> ac = Class.forName("wxaudit.AiConfig");
+            Object def = ac.getMethod("defaults").invoke(null);
+            check(Boolean.FALSE.equals(ac.getMethod("isNetworkAllowed").invoke(def)),
+                    "default AiConfig is network-disabled");
+        } catch (Throwable t) {
+            check(false, "AiConfig defaults check failed: " + t);
+        }
+
         final IExtensionHelpers helpers = mock(IExtensionHelpers.class, new InvocationHandler() {
             @Override public Object invoke(Object p, Method m, Object[] a) {
                 if ("analyzeResponse".equals(m.getName())) {
