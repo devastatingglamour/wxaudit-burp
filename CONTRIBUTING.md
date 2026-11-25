@@ -13,22 +13,25 @@ Build output is `wxaudit-burp.jar` and requires JDK 8+; compile against stubs an
 ## 版本规则 / Versioning
 
 - `1.0.x`: 首个稳定版 / first stable release
+- `1.1.x`: 可选大模型增强（AI 默认关闭）/ optional LLM enhancement (AI off by default)
 - 后续采用语义化版本 / semantic versioning thereafter
 
 一起更新下列文件：/ Update all of these together:
 
 - `CHANGELOG.md`
 - `README.md` / `README.en.md` 的版本号 / version headers
-- `RELEASE_NOTES.md`
+- `FILES.md`（新增类/测试的双语索引）/ bilingual index for new classes/tests
+- `SECURITY.md`（AI 数据外发说明）/ AI data-egress statement
+- `RELEASE_NOTES.md`、`VERIFICATION.md`、`release.py` 的 SHA256（最后回填）/ SHA256 backfill last
 
 ## 发布 / Release
 
 ```bash
 git add .
-git commit -m "release: v1.0.0"
-git tag v1.0.0
+git commit -m "release: v1.1.0"
+git tag v1.1.0
 git push origin main
-git push origin v1.0.0
+git push origin v1.1.0
 ```
 
 用 `release.py` 可一键完成推送、建 Release 与上传 jar 附件。/ Use `release.py` to push, create the Release and upload the jar asset in one shot.
