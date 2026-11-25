@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile (stubs + source + tests, no local Burp dependency)
+        run: |
+          mkdir -p stub-out out test-out
+          javac -encoding UTF-8 -d stub-out stub/burp/*.java
+          javac -encoding UTF-8 -cp stub-out -d out src/wxaudit/*.java
+          javac -encoding UTF-8 -cp "stub-out:out" -d test-out test/wxaudit/SelfTest.java test/wxaudit/IntegrationTest.java test/wxaudit/EdgeCaseTest.java
+
+      - name: Core self-test
+        run: java -cp "out:stub-out:test-out" wxaudit.SelfTest
+
+      - name: End-to-end passive scan (mocked Burp)
+        run: java -Djava.awt.headless=true -cp "out:stub-out:test-out" wxaudit.IntegrationTest
+
+      - name: Boundary and malformed input
+        run: java -Djava.awt.headless=true -cp "out:stub-out:test-out" wxaudit.EdgeCaseTest
+
+      - name: Reproducible packaging check
+        run: |
+          python pack.py
+          HASH1=$(sha256sum wxaudit-burp.jar | awk '{print $1}')
+          python pack.py
+          HASH2=$(sha256sum wxaudit-burp.jar | awk '{print $1}')
+          echo "sha256 run1=$HASH1"
+          echo "sha256 run2=$HASH2"
+          test "$HASH1" = "$HASH2"
+          jar tf wxaudit-burp.jar | grep -q '^wxaudit/' || exit 1
+          if jar tf wxaudit-burp.jar | grep -q '^burp/'; then echo "stub leaked"; exit 1; fi
+
+# 用途：GitHub 自动化工作流 / GitHub automation workflow |
