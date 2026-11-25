@@ -4,7 +4,7 @@
 
 What it does, in order:
   1. Push local `main` (already committed) to GitHub using the supplied PAT
-  2. Create the v1.0.0 Release (auto-creates the tag on default branch HEAD)
+  2. Create the v1.1.0 Release (auto-creates the tag on default branch HEAD)
   3. Upload wxaudit-burp.jar as a release asset
 
 Usage:
@@ -25,42 +25,46 @@ import urllib.request
 OWNER = "devastatingglamour"
 REPO = "wxaudit-burp"
 BRANCH = "main"
-TAG = "v1.0.0"
-TITLE = "v1.0.0 - 首个稳定版 / First Stable Release"
+TAG = "v1.1.0"
+TITLE = "v1.1.0 - AI 研判与接口利用链 / AI Triage and Exploit Chains"
 JAR = "wxaudit-burp.jar"
-SHA256 = "06477ddb0bc2448eb33629c59b7e2c3566889d2e17ad9b9124cd0c4b2a0df0d5"
+SHA256 = "71f55a4dcfc3b8d2d893d57eec3684baf3e70fdb7005e1abf61e98642a003822"
 
 BODY = """## 中文
 
-wxaudit 是挂在 Burp Proxy 上的被动侦察扩展：**只扫你指定的目标网址**，自动提取 JS / 小程序包里的敏感信息与接口，明文与加密 wxapkg 自动解包脱壳。
+wxaudit v1.1.0 在原有被动侦察能力上新增**可选的大模型智能分析（默认关闭）**：
 
-- 目标作用域：精确 host、子域通配、路径前缀；未配置目标时不扫描任何包
-- 解密：PBKDF2-HMAC-SHA1 + AES-256-CBC + XOR，AppID 自动从流量提取并缓存，支持手填
-- 检测：14 条规则（云密钥 / 硬编码 secret / JWT / PII / 接口路径）+ 隐藏路由发现
-- 结果：自定义 Tab、分类筛选、详情、日志、JSON / HTML 导出
+- **AI 二次研判**：对静态命中判误报、给理由；「数据包」视图多选后点「AI 分析选中包」批量送 AI
+- **完整利用链**：授权白帽视角输出漏洞类型、前置条件、有序测试步骤、预期结果与风险等级
+- **可疑路由升级**：从 app-config.json 提取的路由带 file/line/snippet/来源 URL 上下文，并入导出与 AI 分析
+- **OpenAI 兼容端点**：base_url / 模型 / Key / 超时 / 分块 / 利用链开关，存 Burp 扩展设置；可选实时逐条（默认关）
+- 保留 v1.0.0 全部能力：目标作用域过滤、wxapkg 自动解包脱壳、14 条检测规则、JSON/HTML 导出
+
+**隐私与安全**：默认不发任何请求；仅显式启用并填 Key 后，才向自配端点发送脱敏的最小字段，Bearer/secret/JWT 掩码，抓包数据与 AI 结论仅存内存不落盘。
 
 安装：下载下方 jar，在 Burp 中 Extender → Extensions → Add → Java 加载。
+验收：三轮沙盒测试全部通过（编译、182 项断言、真实 Burp API 兼容、字节级可复现、从交付 jar 直接加载）。
+SHA256: 71f55a4dcfc3b8d2d893d57eec3684baf3e70fdb7005e1abf61e98642a003822
 
-验收：三轮沙盒测试全部通过（编译、105 项断言、真实 Burp API 兼容、可复现构建、从交付 jar 直接加载）。
-SHA256: 06477ddb0bc2448eb33629c59b7e2c3566889d2e17ad9b9124cd0c4b2a0df0d5
-
-仅用于自有或已授权目标。详见 README.md。
+**仅用于自有或已明确授权的资产；AI 输出仅供参考，须人工复核。** 详见 README.md。
 
 ## English
 
-wxaudit is a passive recon extension for Burp Proxy. It **only scans the target URLs you configure**, automatically extracts secrets and endpoints from JS / mini-program packages, and unpacks both plaintext and encrypted wxapkg files.
+wxaudit v1.1.0 adds **optional LLM-powered analysis (off by default)** on top of the passive recon capabilities:
 
-- Target scope: exact host, subdomain wildcard, path prefix; scans nothing when no target is configured
-- Decryption: PBKDF2-HMAC-SHA1 + AES-256-CBC + XOR, AppID auto-extracted from traffic with per-host cache and manual override
-- Detection: 14 rules (cloud keys / hardcoded secrets / JWT / PII / endpoint paths) plus hidden-route discovery
-- Results: custom tab, category filters, detail view, log, JSON / HTML export
+- **AI triage**: false-positive verdicts with reasoning; multi-select rows in the **Packets** tab and click **AI Analyze Selected**
+- **Full exploit chains**: authorized white-hat framing — vuln type, preconditions, ordered test steps, expected result and risk level
+- **Route upgrade**: routes extracted from app-config.json now carry file/line/snippet/source URL context, included in exports and AI analysis
+- **OpenAI-compatible endpoint**: base_url / model / key / timeout / chunk / chain toggle stored in Burp settings; optional realtime per-packet (off by default)
+- All v1.0.0 features retained: target scope filtering, wxapkg unpacking/decryption, 14 detection rules, JSON/HTML export
+
+**Privacy & security**: no requests by default; only after explicit opt-in with a key does it send redacted minimal fields to your endpoint (bearer/secret/JWT masked; data and AI results stay in memory, never on disk).
 
 Install: download the jar below, then in Burp go to Extender → Extensions → Add → Java.
+Verification: three sandbox acceptance rounds all passed (compile, 182 assertions, real Burp API compatibility, byte-reproducible, direct load from delivered jar).
+SHA256: 71f55a4dcfc3b8d2d893d57eec3684baf3e70fdb7005e1abf61e98642a003822
 
-Verification: three sandbox acceptance rounds all passed (compile, 105 assertions, real Burp API compatibility, reproducible build, direct load from delivered jar).
-SHA256: 06477ddb0bc2448eb33629c59b7e2c3566889d2e17ad9b9124cd0c4b2a0df0d5
-
-Use only on systems you own or are authorized to test. See README.en.md.
+**For owned or explicitly authorized assets only; AI output is advisory and requires human review.** See README.en.md.
 """
 
 
