@@ -10,15 +10,22 @@ import burp.IInterceptedProxyMessage;
 import burp.ITab;
 
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import java.awt.Component;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,8 +40,10 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
 
     private static final String SETTING_SCOPE = "wxaudit.scope";
     private static final String SETTING_WXID = "wxaudit.wxid";
+    private static final String SETTING_AI = "wxaudit.ai.config";
     private static final Pattern APPID_RE = Pattern.compile("wx[0-9a-fA-F]{16}");
     private static final Pattern WXAPKG_NAME = Pattern.compile("wxapkg|\\.wxapkg|__APP__|app-config", Pattern.CASE_INSENSITIVE);
+    private static final int MAX_PACKETS = 2000;
 
     private IBurpExtenderCallbacks callbacks;
     private IExtensionHelpers helpers;
@@ -46,6 +55,15 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
     private final AtomicInteger skippedCount = new AtomicInteger();
     private volatile String manualWxid = "";
     private volatile long lastNoScopeLog = 0;
+
+    // --- AI / packet capture additions (in-memory only, never persisted) ---
+    private final Map<String, CapturedPacket> packets = new LinkedHashMap<String, CapturedPacket>();
+    private final ConcurrentLinkedQueue<String> packetFifo = new ConcurrentLinkedQueue<String>();
+    private final AiResultStore aiResults = new AiResultStore();
+    private volatile AiConfig aiConfig = AiConfig.defaults();
+    private AiAnalyzer aiAnalyzer = new AiAnalyzer(aiConfig);
+    private volatile ThreadPoolExecutor realtimePool = null;
+    private final AtomicBoolean refreshScheduled = new AtomicBoolean(false);
 
     private static final class FindingEntry {
         final Scanner.Finding finding;
@@ -60,7 +78,10 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
 
         final String savedScope = nullToEmpty(callbacks.loadExtensionSetting(SETTING_SCOPE));
         final String savedWxid = nullToEmpty(callbacks.loadExtensionSetting(SETTING_WXID));
+        final String savedAi = nullToEmpty(callbacks.loadExtensionSetting(SETTING_AI));
         manualWxid = savedWxid;
+        aiConfig = AiConfig.fromJson(savedAi);
+        aiAnalyzer = new AiAnalyzer(aiConfig);
 
         ui = new UiPanel(new UiPanel.Listener() {
             @Override public void onApply(String scopeText, String wxid) {
@@ -76,19 +97,41 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
                 unique.clear();
                 scannedCount.set(0);
                 skippedCount.set(0);
-                ui.refreshStats(0, 0, 0, 0, 0, 0, 0);
+                clearPackets();
+                ui.clearAll();
+                refreshStatsInternal();
                 ui.log("结果已清空");
+            }
+            @Override public void onAiConfigApply(AiConfig cfg) {
+                String err = cfg.validate();
+                if (err != null) {
+                    ui.log("AI 配置未保存: " + err);
+                    return;
+                }
+                aiConfig = cfg;
+                aiAnalyzer = new AiAnalyzer(cfg);
+                callbacks.saveExtensionSetting(SETTING_AI, cfg.toJson());
+                ui.log("AI 配置已保存: " + (cfg.isNetworkAllowed()
+                        ? "已启用 " + cfg.model + " @ " + cfg.baseUrl
+                        : "已禁用（不会发送任何请求）"));
+                if (cfg.realtime && cfg.isNetworkAllowed()) ensureRealtimePool();
+                else shutdownRealtimePool();
+            }
+            @Override public void onAnalyzeSelected(final List<String> packetIds) {
+                analyzeSelected(packetIds);
             }
         });
 
         ui.setScopeText(savedScope);
         ui.setWxidText(savedWxid);
+        ui.setAiConfig(aiConfig);
         scope.configure(savedScope);
         ui.setStatus(describeScope());
 
         callbacks.addSuiteTab(this);
         callbacks.registerProxyListener(this);
-        callbacks.printOutput("wxaudit loaded. Configure a target URL in the 'wxaudit' tab to start passive scanning.");
+        callbacks.printOutput("wxaudit loaded. AI enhancement "
+                + (aiConfig.isNetworkAllowed() ? "ENABLED (" + aiConfig.model + ")" : "disabled (default)"));
     }
 
     private String describeScope() {
@@ -102,11 +145,8 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
         return sb.toString();
     }
 
-    @Override
-    public String getTabCaption() { return "wxaudit"; }
-
-    @Override
-    public Component getUiComponent() { return ui; }
+    @Override public String getTabCaption() { return "wxaudit"; }
+    @Override public Component getUiComponent() { return ui; }
 
     @Override
     public void processProxyMessage(boolean messageIsRequest, IInterceptedProxyMessage message) {
@@ -121,7 +161,7 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
 
             if (!scope.isConfigured()) {
                 long now = System.currentTimeMillis();
-                if (now - lastNoScopeLog > 15000) {   // throttle: avoid log flooding
+                if (now - lastNoScopeLog > 15000) {
                     ui.log("跳过 " + host(url) + "（未配置目标网址，请在面板填写后点“应用目标”）");
                     lastNoScopeLog = now;
                 }
@@ -138,9 +178,10 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
                 return;
             }
 
-            // remember any appid observed on this host for later decryption
-            String observed = findAppId(concat(url.toString(), new String(info.getRequest() == null ? new byte[0]
-                    : info.getRequest(), StandardCharsets.ISO_8859_1)));
+            byte[] requestBytes = info.getRequest();
+            String requestText = new String(requestBytes == null ? new byte[0] : requestBytes,
+                    StandardCharsets.ISO_8859_1);
+            String observed = findAppId(concat(url.toString(), requestText));
             if (observed != null) hostAppIds.put(host(url), observed);
 
             byte[] body = extractBody(raw);
@@ -149,12 +190,13 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
 
             List<Scanner.Finding> found;
             String kind;
+            List<RouteFinding> packetRoutes = new ArrayList<RouteFinding>();
             if (Crypto.isPlainWxapkg(body)) {
-                found = scanWxapkg(body, url, null);
+                found = scanWxapkg(body, url, null, packetRoutes);
                 kind = "wxapkg(明文)";
             } else if (looksLikeEncryptedPackage(url, raw)) {
                 String wxid = resolveWxid(url);
-                found = scanWxapkg(body, url, wxid);
+                found = scanWxapkg(body, url, wxid, packetRoutes);
                 kind = "wxapkg(加密)";
             } else if (isTextResponse(url, raw, body)) {
                 String text = new String(body, StandardCharsets.UTF_8);
@@ -165,17 +207,45 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
             }
 
             scannedCount.incrementAndGet();
+            final List<Scanner.Finding> accepted = new ArrayList<Scanner.Finding>();
             if (found != null && !found.isEmpty()) {
-                final List<Scanner.Finding> accepted = new ArrayList<Scanner.Finding>();
                 for (Scanner.Finding f : found) {
                     if (unique.putIfAbsent(f.key(), new FindingEntry(f)) == null) accepted.add(f);
                 }
-                if (!accepted.isEmpty()) {
-                    final String label = kind;
-                    SwingUtilities.invokeLater(new Runnable() {
-                        @Override public void run() { ui.addFindings(accepted); }
+            }
+
+            // Build captured packet (redacted, in-memory) even with zero findings,
+            // so the user can still select it for AI analysis.
+            String method = parseMethod(requestText);
+            String requestHead = redactRequestHead(requestText);
+            String responseExcerpt = AiPrompts.redact(
+                    new String(body, 0, Math.min(body.length, 2000), StandardCharsets.UTF_8));
+            List<String> fkeys = new ArrayList<String>();
+            for (Scanner.Finding f : accepted) fkeys.add(f.key());
+            final CapturedPacket packet = new CapturedPacket(
+                    url.toString(), method, kind, System.currentTimeMillis(),
+                    requestHead, responseExcerpt, fkeys, packetRoutes);
+            recordPacket(packet);
+
+            if (!accepted.isEmpty()) {
+                ui.log("发现 " + accepted.size() + " 条 @ " + kind + " " + url);
+            }
+            final List<Scanner.Finding> acceptedSnapshot = accepted;
+            SwingUtilities.invokeLater(new Runnable() {
+                @Override public void run() {
+                    ui.addFindings(acceptedSnapshot);
+                    ui.addPacket(packet);
+                }
+            });
+
+            // Optional realtime AI (off by default). Never blocks the proxy thread.
+            if (aiConfig.realtime && aiConfig.isNetworkAllowed() && realtimePool != null) {
+                try {
+                    realtimePool.execute(new Runnable() {
+                        @Override public void run() { realtimeAnalyze(packet); }
                     });
-                    ui.log("发现 " + accepted.size() + " 条 @ " + label + " " + url);
+                } catch (java.util.concurrent.RejectedExecutionException re) {
+                    ui.log("AI 实时队列已满，丢弃一条（可关闭实时分析）");
                 }
             }
             updateStats();
@@ -185,24 +255,25 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
         }
     }
 
-    private List<Scanner.Finding> scanWxapkg(byte[] body, URL url, String wxid) {
+    private List<Scanner.Finding> scanWxapkg(byte[] body, URL url, String wxid,
+                                              List<RouteFinding> outRoutes) {
         try {
             Wxapkg.UnpackResult result = Wxapkg.unpack(body, wxid);
             List<Scanner.Finding> out = Scanner.scanPackageFiles(result.files, url.toString());
-            List<String> routes = Scanner.extractRoutes(result.files);
+            List<RouteFinding> routes = Scanner.extractRouteFindings(result.files, url.toString());
             if (result.detectedAppId != null) hostAppIds.put(host(url), result.detectedAppId);
+            if (outRoutes != null && routes != null) outRoutes.addAll(routes);
             if (!routes.isEmpty()) {
-                final List<String> snapshot = routes;
+                final List<RouteFinding> snapshot = new ArrayList<RouteFinding>(routes);
                 SwingUtilities.invokeLater(new Runnable() {
                     @Override public void run() { ui.addRoutes(snapshot); }
                 });
-                ui.log("可疑路由 " + routes.size() + " 个: " + routes);
+                ui.log("可疑路由 " + routes.size() + " 个");
             }
             ui.log("解包成功 " + url + " (" + result.files.size() + " 文件"
                     + (result.encrypted ? ", 使用 AppID " + wxid : "") + ")");
             return out;
         } catch (Exception ex) {
-            // always explain why decryption/unpacking failed
             ui.log("解包失败 " + url + " -> " + ex.getMessage());
             return null;
         }
@@ -251,7 +322,6 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
         String head = new String(raw, 0, Math.min(raw.length, 4096), StandardCharsets.ISO_8859_1).toLowerCase(Locale.ROOT);
         if (head.contains("content-type:")) return head.contains("javascript") || head.contains("ecmascript")
                 || head.contains("json") || head.contains("text/") || head.contains("x-www-form-urlencoded");
-        // fallback: mostly printable text
         int printable = 0;
         int sample = Math.min(body.length, 512);
         for (int i = 0; i < sample; i++) {
@@ -262,6 +332,10 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
     }
 
     private void updateStats() {
+        refreshStatsInternal();
+    }
+
+    private void refreshStatsInternal() {
         final int scanned = scannedCount.get();
         final int skipped = skippedCount.get();
         int high = 0, medium = 0, low = 0, info = 0;
@@ -274,18 +348,154 @@ public class BurpExtender implements IBurpExtender, IProxyListener, ITab {
         }
         final int h = high, m = medium, l = low, i = info;
         SwingUtilities.invokeLater(new Runnable() {
-            @Override public void run() { ui.refreshStats(scanned, skipped, unique.size(), h, m, l, i); }
+            @Override public void run() {
+                ui.refreshStats(scanned, skipped, unique.size(), h, m, l, i);
+                ui.setAiStats(aiResults.size(), packets.size(), aiResults.falsePositiveCount());
+            }
         });
     }
 
-    private List<FindingEntry> snapshot() {
-        return new ArrayList<FindingEntry>(unique.values());
+    // ------------------------------------------------------------------
+    // Packet capture (in-memory, bounded)
+    private synchronized void recordPacket(CapturedPacket p) {
+        packets.put(p.id, p);
+        packetFifo.offer(p.id);
+        while (packetFifo.size() > MAX_PACKETS) {
+            String old = packetFifo.poll();
+            if (old != null) packets.remove(old);
+        }
     }
 
+    private synchronized void clearPackets() {
+        packets.clear();
+        packetFifo.clear();
+        aiResults.clear();
+    }
+
+    synchronized List<CapturedPacket> packetsByIds(List<String> ids) {
+        List<CapturedPacket> out = new ArrayList<CapturedPacket>();
+        if (ids == null) return out;
+        for (String id : ids) {
+            CapturedPacket p = packets.get(id);
+            if (p != null) out.add(p);
+        }
+        return out;
+    }
+
+    synchronized List<CapturedPacket> allPackets() {
+        return new ArrayList<CapturedPacket>(packets.values());
+    }
+
+    Scanner.Finding[] allFindingsArray() {
+        List<Scanner.Finding> list = allFindings();
+        return list.toArray(new Scanner.Finding[list.size()]);
+    }
+
+    // ------------------------------------------------------------------
+    // AI analysis
+    private void analyzeSelected(final List<String> packetIds) {
+        if (!aiConfig.isNetworkAllowed()) {
+            ui.log("AI 未启用：请先在面板填写 base_url / API Key / 模型并勾选启用");
+            return;
+        }
+        final List<CapturedPacket> selected = packetsByIds(packetIds);
+        if (selected.isEmpty()) {
+            ui.log("未选中任何数据包");
+            return;
+        }
+        final List<CapturedPacket> todo = new ArrayList<CapturedPacket>();
+        for (CapturedPacket p : selected) if (!aiResults.has(p.id)) todo.add(p);
+        if (todo.isEmpty()) {
+            ui.log("选中的数据包均已分析（可在详情区查看）");
+            return;
+        }
+        final String model = aiConfig.model;
+        ui.log("AI 开始分析 " + todo.size() + " 个数据包 (" + model + ")");
+        new SwingWorker<List<AiResult>, Void>() {
+            @Override protected List<AiResult> doInBackground() {
+                return aiAnalyzer.analyzeBatch(todo, allFindingsArray());
+            }
+            @Override protected void done() {
+                try {
+                    List<AiResult> results = get();
+                    int ok = 0, err = 0;
+                    for (AiResult r : results) {
+                        aiResults.put(r);
+                        if (r.ok()) ok++; else err++;
+                    }
+                    ui.setAiResults(aiResults);
+                    refreshStatsInternal();
+                    ui.log("AI 完成: 成功 " + ok + " / 失败 " + err);
+                } catch (Exception ex) {
+                    ui.log("AI 分析失败: " + ex.getMessage());
+                }
+            }
+        }.execute();
+    }
+
+    private void realtimeAnalyze(CapturedPacket packet) {
+        if (aiResults.has(packet.id)) return;
+        AiResult r = aiAnalyzer.analyzeOne(packet, allFindingsArray());
+        aiResults.put(r);
+        scheduleAiRefresh();
+    }
+
+    private void scheduleAiRefresh() {
+        if (!refreshScheduled.compareAndSet(false, true)) return;
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override public void run() {
+                refreshScheduled.set(false);
+                ui.setAiResults(aiResults);
+                refreshStatsInternal();
+            }
+        });
+    }
+
+    private void ensureRealtimePool() {
+        if (realtimePool != null && !realtimePool.isShutdown()) return;
+        realtimePool = new ThreadPoolExecutor(1, 2, 60L, TimeUnit.SECONDS,
+                new java.util.concurrent.ArrayBlockingQueue<Runnable>(50),
+                new ThreadPoolExecutor.DiscardOldestPolicy());
+        realtimePool.setThreadFactory(new java.util.concurrent.ThreadFactory() {
+            private final AtomicInteger n = new AtomicInteger();
+            @Override public Thread newThread(Runnable r) {
+                Thread t = new Thread(r, "wxaudit-ai-" + n.incrementAndGet());
+                t.setDaemon(true);
+                return t;
+            }
+        });
+    }
+
+    private void shutdownRealtimePool() {
+        ThreadPoolExecutor pool = realtimePool;
+        if (pool != null && !pool.isShutdown()) pool.shutdownNow();
+        realtimePool = null;
+    }
+
+    // ------------------------------------------------------------------
     List<Scanner.Finding> allFindings() {
         List<Scanner.Finding> out = new ArrayList<Scanner.Finding>();
-        for (FindingEntry e : snapshot()) out.add(e.finding);
+        for (FindingEntry e : unique.values()) out.add(e.finding);
         return out;
+    }
+
+    List<RouteFinding> allRoutes() { return ui == null ? new ArrayList<RouteFinding>() : ui.routesSnapshot(); }
+
+    List<AiResult> allAiResults() { return aiResults.all(); }
+
+    private static String parseMethod(String requestText) {
+        if (requestText == null || requestText.isEmpty()) return "GET";
+        int sp = requestText.indexOf(' ');
+        String m = sp > 0 ? requestText.substring(0, sp) : "GET";
+        return m.length() > 12 ? "GET" : m.toUpperCase(Locale.ROOT);
+    }
+
+    private static String redactRequestHead(String requestText) {
+        if (requestText == null || requestText.isEmpty()) return "";
+        int end = requestText.indexOf("\r\n\r\n");
+        if (end < 0) end = requestText.indexOf("\n\n");
+        String head = end > 0 ? requestText.substring(0, end) : requestText;
+        return AiPrompts.redact(head.length() > 1000 ? head.substring(0, 1000) : head);
     }
 
     private static String findAppId(String text) {
