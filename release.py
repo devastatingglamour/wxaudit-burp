@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""One-shot publisher for wxaudit-burp (stdlib only, no third-party deps).
+"""Idempotent one-shot publisher for wxaudit-burp (stdlib only, no third-party deps).
 
 What it does, in order:
-  1. Push local `main` (already committed) to GitHub using the supplied PAT
-  2. Create the v1.1.0 Release (auto-creates the tag on default branch HEAD)
-  3. Upload wxaudit-burp.jar as a release asset
+  1. Push local `main` AND the version tag to GitHub using the supplied PAT
+  2. Find the Release for TAG, or create it (bilingual body); PATCH body if it exists
+  3. Delete any existing same-name asset, then upload this version's jar
+
+Re-running is safe: no duplicate tags/releases, no 422 on repeated assets.
+Every version tag therefore ends up with exactly one Release + its own asset.
 
 Usage:
   GITHUB_TOKEN=<pat> python release.py
@@ -68,7 +71,8 @@ SHA256: 71f55a4dcfc3b8d2d893d57eec3684baf3e70fdb7005e1abf61e98642a003822
 """
 
 
-def api(url, token, method="GET", payload=None, headers=None, raw=None, ctype=None):
+def api(url, token, method="GET", payload=None, headers=None, raw=None, ctype=None,
+        allow_404=False):
     data = raw if raw is not None else (json.dumps(payload).encode("utf-8") if payload is not None else None)
     h = {
         "Authorization": "Bearer " + token,
@@ -88,6 +92,8 @@ def api(url, token, method="GET", payload=None, headers=None, raw=None, ctype=No
             body = r.read().decode("utf-8", "replace")
             return r.status, (json.loads(body) if body else None)
     except urllib.error.HTTPError as e:
+        if allow_404 and e.code == 404:
+            return 404, None
         detail = e.read().decode("utf-8", "replace")
         print("  HTTP %s %s -> %s %s" % (method, url, e.code, detail[:400]))
         raise
@@ -100,31 +106,42 @@ def main():
         sys.exit(2)
     redacted = token[:4] + "***" + token[-4:]
 
-    print("[1/3] push main -> https://github.com/%s/%s" % (OWNER, REPO))
+    print("[1/4] push main + tag %s -> https://github.com/%s/%s" % (TAG, OWNER, REPO))
     push_url = "https://x-access-token:%s@github.com/%s/%s.git" % (token, OWNER, REPO)
     p = subprocess.run(
-        ["git", "push", push_url, "main:" + BRANCH],
+        ["git", "push", push_url, "main:" + BRANCH, TAG + ":" + TAG],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
-    # scrub token from any git output before printing
     out = p.stdout.replace(token, redacted)
-    print(out.strip())
+    print(out.strip() or "  (everything up-to-date)")
     if p.returncode != 0:
         print("ERROR: git push failed")
         sys.exit(1)
 
-    print("[2/3] create release " + TAG)
-    rel_url = "https://api.github.com/repos/%s/%s/releases" % (OWNER, REPO)
-    status, rel = api(rel_url, token, method="POST", payload={
-        "tag_name": TAG,
-        "name": TITLE,
-        "body": BODY,
-        "draft": False,
-        "prerelease": False,
-    })
-    print("  release created: %s (id=%s)" % (rel.get("html_url"), rel.get("id")))
+    print("[2/4] find or create release " + TAG)
+    rel_by_tag = "https://api.github.com/repos/%s/%s/releases/tags/%s" % (OWNER, REPO, TAG)
+    status, rel = api(rel_by_tag, token, allow_404=True)
+    if status == 404:
+        status, rel = api("https://api.github.com/repos/%s/%s/releases" % (OWNER, REPO),
+                          token, method="POST", payload={
+                              "tag_name": TAG, "name": TITLE, "body": BODY,
+                              "draft": False, "prerelease": False,
+                          })
+        print("  release created: %s (id=%s)" % (rel.get("html_url"), rel.get("id")))
+    else:
+        status, rel = api("https://api.github.com/repos/%s/%s/releases/%s" % (OWNER, REPO, rel["id"]),
+                          token, method="PATCH", payload={"name": TITLE, "body": BODY,
+                                                          "draft": False, "prerelease": False})
+        print("  release reused+synced: %s (id=%s)" % (rel.get("html_url"), rel.get("id")))
 
-    print("[3/3] upload asset " + JAR)
+    print("[3/4] remove any existing same-name asset")
+    for a in rel.get("assets", []):
+        if a["name"] == JAR:
+            api("https://api.github.com/repos/%s/%s/releases/assets/%s" % (OWNER, REPO, a["id"]),
+                token, method="DELETE")
+            print("  deleted old asset id=%s" % a["id"])
+
+    print("[4/4] upload asset " + JAR)
     with open(JAR, "rb") as f:
         jar_bytes = f.read()
     up_url = "https://uploads.github.com/repos/%s/%s/releases/%s/assets?name=%s" % (
