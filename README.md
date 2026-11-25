@@ -1,5 +1,7 @@
 # wxaudit Burp Extension v1.0.0
 
+[![CI](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml/badge.svg)](https://github.com/devastatingglamour/wxaudit-burp/actions/workflows/ci.yml)
+
 挂在 Burp Proxy 上的被动侦察扩展：**只扫你指定的目标网址**，自动提取 JS 与小程序包里的敏感信息和接口，明文与加密 wxapkg 自动解包脱壳。 / A passive recon extension for Burp Proxy that **only scans the target URLs you configure**, extracts secrets and endpoints from JS and mini-program packages, and unpacks plaintext and encrypted wxapkg files.
 
 从 [Releases](../../releases) 下载 `wxaudit-burp.jar`，在 Burp 中 **Extender → Extensions → Add → Java** 加载；加载后出现 **wxaudit** 标签页。 / Download the jar from Releases and load it via **Extender → Extensions → Add → Java**; a **wxaudit** tab then appears.
@@ -13,10 +15,13 @@
 | `src/wxaudit/` | Burp 扩展源码 / Burp extension source code |
 | `stub/burp/` | Burp 接口编译桩（不进 jar）/ Burp API compile-time stubs (not shipped) |
 | `test/wxaudit/` | 自动化测试 / Automated tests |
+| `.github/workflows/ci.yml` | GitHub Actions 持续集成 / GitHub Actions continuous integration |
 | `.gitignore` | Git 忽略规则 / Git ignore rules |
 | `CHANGELOG.md` | 版本变更记录 / Changelog |
+| `CONTRIBUTING.md` | 贡献与发布流程 / Contribution and release process |
 | `FILES.md` | 全部文件的中英双语简介 / Bilingual descriptions for all files |
-| `LICENSE` | MIT 许可证 / MIT license |
+| `LICENSE` | MIT 许可证 / MIT License |
+| `SECURITY.md` | 安全策略 / Security policy |
 | `README.en.md` | 英文使用说明 / English usage guide |
 | `README.md` | 本文件 / This file |
 | `RELEASE_NOTES.md` | 发布说明 / Release notes |
@@ -88,7 +93,5 @@ bash verify.sh   # 三轮独立验收 / three acceptance rounds
 ## 合规 / Legal
 
 仅用于自有或已明确授权的目标。 / Use only on systems you own or are explicitly authorized to test.
-
-<!-- 用途：项目介绍、安装方法与文件索引 / Project overview, installation, and file index | -->
 
 <!-- 用途：项目介绍、安装方法与文件索引 / Project overview, installation, and file index | -->
