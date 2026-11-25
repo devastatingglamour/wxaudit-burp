@@ -29,7 +29,7 @@ jobs:
           mkdir -p stub-out out test-out
           javac -encoding UTF-8 -d stub-out stub/burp/*.java
           javac -encoding UTF-8 -cp stub-out -d out src/wxaudit/*.java
-          javac -encoding UTF-8 -cp "stub-out:out" -d test-out test/wxaudit/SelfTest.java test/wxaudit/IntegrationTest.java test/wxaudit/EdgeCaseTest.java
+          javac -encoding UTF-8 -cp "stub-out:out" -d test-out test/wxaudit/*.java
 
       - name: Core self-test
         run: java -cp "out:stub-out:test-out" wxaudit.SelfTest
@@ -39,6 +39,9 @@ jobs:
 
       - name: Boundary and malformed input
         run: java -Djava.awt.headless=true -cp "out:stub-out:test-out" wxaudit.EdgeCaseTest
+
+      - name: AI enhancement (mock OpenAI endpoint)
+        run: java -Djava.awt.headless=true -cp "out:stub-out:test-out" wxaudit.AiTest
 
       - name: Reproducible packaging check
         run: |
